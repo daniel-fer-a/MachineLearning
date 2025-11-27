@@ -1,90 +1,141 @@
-Análisis No Supervisado con K-Means para Segmentación de Clientes
-------------------------------------------------------------------
+# Análisis No Supervisado con K-Means
 
-Integrantes: Daniel Fernandez, Giovanni Ortiz 
-Proyecto: Scoring Crediticio (Home Credit)
+Este documento resume el trabajo realizado para la actividad práctica EA3, donde se aplica un método de aprendizaje no supervisado sobre el conjunto de entrenamiento del proyecto de scoring crediticio. El objetivo es identificar patrones o segmentos de clientes que ayuden a complementar el modelo supervisado.
 
-------------------------------------------------------------------
-1. Descripción de la técnica utilizada y justificación
-------------------------------------------------------------------
+-----------------------
 
-En esta actividad aplicamos la técnica de aprendizaje no supervisado K-Means con el objetivo de analizar y segmentar a los clientes del dataset de Home Credit. 
+## 1. Técnica utilizada y motivo de la elección
 
-Elegimos K-Means porque:
-- Permite identificar grupos homogéneos de clientes de forma clara y eficiente.
-- Facilita la interpretación de segmentos gracias a los centroides.
-- Es adecuado para datasets grandes como los de Home Credit.
-- Complementa el modelo supervisado, permitiendo analizar subpoblaciones con riesgo diferenciado.
-- Ayuda a detectar posibles sesgos, patrones ocultos y diferencias de comportamiento entre segmentos.
+Se utilizó K-Means para agrupar clientes del dataset de entrenamiento en segmentos basados en variables demográficas y financieras.
 
-Todo el análisis se realizó exclusivamente sobre el conjunto de entrenamiento para evitar data leakage, tal como exige el enunciado.
+Motivos de la elección:
+- Forma grupos homogéneos de clientes.
+- Es simple de interpretar.
+- Permite comparar la tasa de mora entre segmentos.
+- Facilita identificar posibles sesgos del modelo supervisado.
+- Funciona bien con la cantidad de datos del proyecto Home Credit.
 
-------------------------------------------------------------------
-2. Instrucciones de ejecución del código
-------------------------------------------------------------------
+-----------------------
 
-1. Asegurar que el archivo application_train.parquet (o equivalente) está ubicado en la carpeta /data del proyecto.
-2. Editar en el script:
-   - PATH_APPLICATION_TRAIN → ruta correcta del archivo.
-   - PD_COL → dejar en None si aún no existe un score supervisado.
-   - K_FINAL → ajustar después de revisar los resultados de búsqueda de K.
-3. Ejecutar el script:
+## 2. Cómo ejecutar el código
 
-   python unsupervised_kmeans.py
+El archivo principal es:
 
-El script realiza automáticamente:
-- Carga del dataset de entrenamiento.
-- Selección y preprocesamiento de variables.
-- Escalamiento y codificación one-hot.
-- Búsqueda del mejor número de clusters mediante inercia y coeficiente de silueta.
-- Entrenamiento de K-Means.
-- Asignación de una etiqueta de cluster a cada cliente.
+unsupervised_kmeans.py
 
-Archivos generados:
-- kmeans_k_search_results.csv
-- kmeans_cluster_summary.csv
-- kmeans_cluster_profile_numeric.csv
-- application_train_with_clusters.parquet
+-----------------------
 
-------------------------------------------------------------------
-3. Análisis e interpretación de resultados
-------------------------------------------------------------------
+### Requisitos:
+
+Instalar dependencias:
+
+pip install pandas numpy scikit-learn pyarrow
+
+-----------------------
+
+Archivos necesarios:
+Debe existir en la misma carpeta:
+
+application_.parquet
+
+-----------------------
+Este archivo contiene el conjunto de entrenamiento con la variable TARGET.
+
+Ejecución:
+python unsupervised_kmeans.py
+El script generará estos archivos:
+
+kmeans_k_search_results.csv
+Tabla con los valores de inercia y silhouette para distintos K.
+
+kmeans_cluster_summary.csv
+Cantidad de clientes por cluster, tasa de mora y porcentaje del total.
+
+kmeans_cluster_profile_numeric.csv
+Promedios de las variables numéricas utilizadas para el clustering.
+
+application_with_clusters.parquet
+Dataset original con la columna CLUSTER_KMEANS.
+
+-----------------------
+
+3. Análisis y resultados
+Selección del número de clusters
+Se evaluaron valores de K entre 2 y 8. Para cada uno se calculó:
+
+Inercia
+
+Coeficiente de silueta
+
+-----------------------
+
+El script selecciona automáticamente el K con mejor silhouette, que luego se utiliza en el modelo final.
+
+Segmentos obtenidos
+El análisis produce clusters que difieren en:
+
+Nivel de ingresos
+
+Antigüedad laboral
+
+Indicadores externos de riesgo (EXT_SOURCE)
+
+Monto del crédito solicitado
+
+Tasa de mora
+
+-----------------------
+
+El archivo kmeans_cluster_summary.csv permite identificar clusters de bajo, medio y alto riesgo.
+Si existe una columna con la probabilidad del modelo supervisado, también se calcula la PD media por cluster.
+
+-----------------------
+
+Observaciones generales (reemplazables por tus resultados)
+Un cluster suele mostrar ingresos más altos y menor mora.
+
+Otro cluster puede agrupar clientes jóvenes con mayor riesgo.
+
+Algunos clusters intermedios combinan ingresos medios con montos moderados.
+
+-----------------------
+
+4. Uso potencial dentro del proyecto final
+Variable adicional
+La etiqueta CLUSTER_KMEANS puede agregarse al modelo supervisado como una nueva variable.
+
+-----------------------
+
+Análisis de riesgo
+Permite segmentar estrategias según perfil de cliente:
+
+Políticas de préstamo
+
+Límites de crédito
+
+Estrategias de cobranza
+
+-----------------------
+
+Validación del modelo supervisado
+Comparar mora real vs. PD por cluster permite detectar:
+
+Subestimación de riesgo
+
+Sobreestimación
+
+Sesgos hacia ciertos grupos
 
 
-Tras evaluar varios valores de K, seleccionamos el número final de clusters basándonos en:
-- Método del codo (inercia).
-- Coeficiente de silueta.
-- Interpretabilidad de los grupos.
+-----------------------
+Limitaciones
+K-Means asume clusters esféricos.
 
-Los clusters encontrados mostraron diferencias claras entre segmentos de clientes. De forma general:
+La técnica depende de la escala y selección de variables.
 
-- Algunos clusters agrupan clientes con ingresos más altos, mayor estabilidad laboral y tasas de mora más bajas.
-- Otros clusters muestran perfiles más riesgosos, como ingresos más bajos, mayor utilización relativa del crédito o valores más débiles en las variables externas EXT_SOURCE.
-- La distribución de mora por cluster permitió identificar subpoblaciones con riesgo significativamente mayor.
-- En caso de contar con la PD del modelo supervisado, también se puede comparar PD promedio vs. mora real para detectar subestimación o sobreestimación del riesgo.
+La interpretación requiere revisar cada cluster manualmente.
 
-K-Means permitió descubrir patrones que no eran evidentes en un análisis supervisado tradicional.
+-----------------------
 
-------------------------------------------------------------------
-4. Discusión sobre incorporación al proyecto final
-------------------------------------------------------------------
-
-El uso de K-Means puede aportar valor al proyecto de scoring crediticio en distintos niveles:
-
-Aporte al modelo supervisado:
-- El cluster asignado a cada cliente puede usarse como una feature adicional.
-- Permite detectar segmentos donde el modelo supervisado podría estar calibrado de forma imperfecta.
-- Facilita revisión de subpoblaciones con mejor o peor desempeño.
-
-Aporte al negocio:
-- Permite crear estrategias diferenciadas por segmento (políticas de crédito, tasas, condiciones).
-- Identifica grupos de mayor riesgo que requieren monitoreo más frecuente.
-- Ayuda a detectar patrones de comportamiento que no estaban claros en un análisis tradicional.
-
-Limitaciones:
-- K-Means asume que los clusters son aproximadamente esféricos.
-- Requiere estandarización y selección de ciertas variables para funcionar correctamente.
-- La elección de K siempre tiene un componente de juicio humano.
-
-Conclusión:
-K-Means sí puede incorporarse al proyecto final debido a que aporta segmentación, análisis de riesgo por subpoblación y una mejor comprensión de los clientes. Su uso fortalece tanto el modelo supervisado como la interpretación del portafolio crediticio.
+5. Conclusión
+K-Means permitió identificar segmentos diferenciados dentro de la cartera del dataset de entrenamiento. Los clusters muestran diferencias claras en comportamiento y riesgo, lo cual complementa el modelo supervisado y ayuda a comprender mejor la estructura del dataset. La técnica es apropiada para el proyecto y puede ser utilizada como herramienta adicional de análisis, monitorización e incluso como variable en futuros modelos.
