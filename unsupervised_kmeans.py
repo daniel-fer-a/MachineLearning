@@ -7,12 +7,11 @@ Original file is located at
     https://colab.research.google.com/drive/1iPVr2DUb21r74sswB24N8Vx3jWeVpaH0
 """
 
-# unsupervised_kmeans.py
-# Análisis no supervisado (K-Means) sobre Home Credit - EA3
+
+# === CONFIGURACIÓN ===
 
 import pandas as pd
 import numpy as np
-
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -20,72 +19,45 @@ from sklearn.impute import SimpleImputer
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 
-# ============================================================
-# 0. CONFIGURACIÓN BÁSICA
-# ============================================================
-
-# Ruta al conjunto de entrenamiento (SOLO TRAIN, nada de test/validación)
-PATH_APPLICATION_TRAIN = "data/application_train.parquet"  # ajusta ruta/nombre
-
-# Nombre de la variable objetivo (para analizar riesgo por cluster, no para entrenar)
+PATH_APPLICATION_TRAIN = "application_.parquet"
 TARGET_COL = "TARGET"
 
-# (Opcional) nombre de la columna con la PD del modelo supervisado sobre TRAIN
-# Si aún no tienes la PD guardada en una columna, déjalo como None.
-PD_COL = None     # por ejemplo: "PD_MODEL" o "SCORE_SUPERVISED"
 
-# Número de clusters final elegido (luego de revisar la tabla de calidad)
-K_FINAL = 4       # puedes cambiarlo tras ver los resultados de K
+# === CARGA DE DATOS ===
 
-
-# ============================================================
-# 1. CARGA DE DATOS (CRISP-DM: Entendimiento de datos)
-# ============================================================
-
-print("Cargando dataset de entrenamiento...")
+print("Cargando dataset...")
 df = pd.read_parquet(PATH_APPLICATION_TRAIN)
-
-print("Shape original:", df.shape)
-print("Columnas disponibles:", len(df.columns))
-
-if TARGET_COL not in df.columns:
-    raise ValueError(
-        f"No se encontró la columna TARGET '{TARGET_COL}' en el dataset. "
-        "Asegúrate de que el archivo de entrenamiento contiene la variable objetivo."
-    )
+print("Shape:", df.shape)
+print("Columnas:", len(df.columns))
 
 y = df[TARGET_COL]
 
-if PD_COL is not None and PD_COL not in df.columns:
-    raise ValueError(
-        f"Definiste PD_COL='{PD_COL}', pero esa columna no existe en df. "
-        "Cámbiala o pon PD_COL = None."
-    )
+possible_pd_cols = [
+    c for c in df.columns
+    if c.lower().startswith(("pd_", "score_", "proba_", "prob_"))
+]
+PD_COL = possible_pd_cols[0] if len(possible_pd_cols) else None
+print("Columna PD detectada:", PD_COL)
 
-# ============================================================
-# 2. SELECCIÓN DE VARIABLES PARA CLUSTERING
-#    (CRISP-DM: Preparación de datos)
-# ============================================================
 
-# Importante: NO usamos TARGET ni ninguna info de valid/test.
-# Usamos solo variables de perfil del cliente en application_train.
+# === VARIABLES ===
 
 numeric_features = [
-    # Ajusta a tu gusto; estas son columnas típicas de Home Credit:
     "AMT_INCOME_TOTAL",
     "AMT_CREDIT",
     "AMT_ANNUITY",
     "AMT_GOODS_PRICE",
     "CNT_CHILDREN",
+    "CNT_FAM_MEMBERS",
     "DAYS_BIRTH",
     "DAYS_EMPLOYED",
     "DAYS_REGISTRATION",
     "DAYS_ID_PUBLISH",
     "DAYS_LAST_PHONE_CHANGE",
+    "REGION_POPULATION_RELATIVE",
     "EXT_SOURCE_1",
     "EXT_SOURCE_2",
     "EXT_SOURCE_3",
-    "REGION_POPULATION_RELATIVE",
 ]
 
 categorical_features = [
@@ -97,23 +69,20 @@ categorical_features = [
     "NAME_EDUCATION_TYPE",
     "NAME_FAMILY_STATUS",
     "NAME_HOUSING_TYPE",
+    "OCCUPATION_TYPE",
     "ORGANIZATION_TYPE",
 ]
 
-# Filtramos solo las columnas que realmente existen en df
 numeric_features = [c for c in numeric_features if c in df.columns]
 categorical_features = [c for c in categorical_features if c in df.columns]
 
-print("\nVariables numéricas usadas para clustering:", numeric_features)
-print("Variables categóricas usadas para clustering:", categorical_features)
+print("Vars numéricas:", numeric_features)
+print("Vars categóricas:", categorical_features)
 
 X = df[numeric_features + categorical_features].copy()
 
 
-# ============================================================
-# 3. PIPELINE DE PREPROCESAMIENTO
-#    (imputación + escalado + one-hot)
-# ============================================================
+# === PREPROCESAMIENTO ===
 
 numeric_transformer = Pipeline(steps=[
     ("imputer", SimpleImputer(strategy="median")),
@@ -132,63 +101,50 @@ preprocessor = ColumnTransformer(
     ]
 )
 
-# ============================================================
-# 4. BÚSQUEDA DEL NÚMERO DE CLUSTERS (K)
-#    (CRISP-DM: Modelado)
-# ============================================================
 
+# === BÚSQUEDA DE K ===
+
+print("\nBuscando mejor K...")
 k_values = [2, 3, 4, 5, 6, 7, 8]
 results = []
 
-print("\nBuscando K óptimo (inertia + silhouette):")
 for k in k_values:
     model_k = Pipeline(steps=[
         ("preprocess", preprocessor),
-        ("cluster", KMeans(n_clusters=k, random_state=42, n_init="auto"))
+        ("cluster", KMeans(n_clusters=k, random_state=42, n_init=10))
     ])
     model_k.fit(X)
-
-    # Inercia (suma de distancias intra-cluster)
     inertia = model_k.named_steps["cluster"].inertia_
-
-    # Para silueta, necesitamos los datos transformados
-    X_transformed = model_k.named_steps["preprocess"].transform(X)
+    Xt = model_k.named_steps["preprocess"].transform(X)
     labels = model_k.named_steps["cluster"].labels_
-    sil = silhouette_score(X_transformed, labels)
-
+    sil = silhouette_score(Xt, labels)
     results.append({"k": k, "inertia": inertia, "silhouette": sil})
-    print(f"K={k}: inertia={inertia:.2f}, silhouette={sil:.4f}")
+    print(f"K={k} | inertia={inertia:.2f} | silhouette={sil:.4f}")
 
 results_df = pd.DataFrame(results)
 results_df.to_csv("kmeans_k_search_results.csv", index=False)
-print("\nTabla con resultados guardada en 'kmeans_k_search_results.csv'.")
+
+best_row = results_df.loc[results_df["silhouette"].idxmax()]
+K_FINAL = int(best_row["k"])
+print("\nK seleccionado:", K_FINAL)
 
 
-# ============================================================
-# 5. ENTRENAMIENTO DEL MODELO FINAL CON K_FINAL
-# ============================================================
+# === MODELO FINAL ===
 
-print(f"\nEntrenando modelo final con K={K_FINAL}...")
+print("\nEntrenando modelo final...")
 final_model = Pipeline(steps=[
     ("preprocess", preprocessor),
-    ("cluster", KMeans(n_clusters=K_FINAL, random_state=42, n_init="auto"))
+    ("cluster", KMeans(n_clusters=K_FINAL, random_state=42, n_init=10))
 ])
 
 final_model.fit(X)
+df["CLUSTER_KMEANS"] = final_model.named_steps["cluster"].labels_
 
-# Asignar labels
-X_transformed_final = final_model.named_steps["preprocess"].transform(X)
-cluster_labels = final_model.named_steps["cluster"].labels_
-df["CLUSTER_KMEANS"] = cluster_labels
-
-print("Clusters asignados. Ejemplo de distribución:")
-print(df["CLUSTER_KMEANS"].value_counts(normalize=True).sort_index())
+print("\nDistribución de clusters:")
+print(df["CLUSTER_KMEANS"].value_counts())
 
 
-# ============================================================
-# 6. ANÁLISIS DE RIESGO POR CLUSTER
-#    (CRISP-DM: Evaluación / Interpretación)
-# ============================================================
+# === RESUMEN POR CLUSTER ===
 
 grouped = df.groupby("CLUSTER_KMEANS")
 
@@ -207,18 +163,19 @@ print(cluster_summary)
 
 cluster_summary.to_csv("kmeans_cluster_summary.csv")
 
-# Ejemplo de perfil promedio de algunas variables numéricas
+
+# === PERFIL NUMÉRICO ===
+
 profile_numeric = grouped[numeric_features].mean()
 profile_numeric.to_csv("kmeans_cluster_profile_numeric.csv")
 
-print("\nPerfil promedio de variables numéricas por cluster guardado en 'kmeans_cluster_profile_numeric.csv'.")
+print("\nPerfil numérico por cluster guardado.")
 
-# ============================================================
-# 7. GUARDAR DATASET ENRIQUECIDO
-# ============================================================
 
-OUTPUT_PATH = "application_train_with_clusters.parquet"
-df.to_parquet(OUTPUT_PATH)
-print(f"\nDataset con columna CLUSTER_KMEANS guardado en: {OUTPUT_PATH}")
+# === DATASET FINAL ===
 
-print("\n=== FIN DEL SCRIPT DE K-MEANS (EA3) ===")
+out_path = "application_with_clusters.parquet"
+df.to_parquet(out_path)
+
+print("\nArchivo final generado:", out_path)
+print("\nProceso completado.")
